@@ -1,8 +1,9 @@
+
 oneGB = 1 * 1000 * 1000 # in KB
 $testbed = Proc.new do |type, esxStyle, vcStyle, dbType, location|
   esxStyle ||= 'pxeBoot'
   vcStyle ||= 'vpxInstall'
-
+  
   esxStyle = esxStyle.to_s
   vcStyle = vcStyle.to_s
   sharedStorageStyle = 'iscsi'
@@ -11,41 +12,27 @@ $testbed = Proc.new do |type, esxStyle, vcStyle, dbType, location|
   nameParts = ['vic', 'vsan', type, esxStyle, vcStyle]
   if dbType != 'embedded'
     nameParts << dbType
-  end
-
+  end 
+  
   if type == 'complex'
     numEsx = 8
-    numCPUs = 4
-    vmsPerHost = 1
-    addHosts = 'vsan-complex-vcqafvt'
-  elsif type == 'simple'
-    numEsx = 4
-    numCPUs = 4
-    vmsPerHost = 0
-    addHosts = 'vsan-simple-vcqafvt'
-  elsif type == 'complexCPU'
-    numEsx = 8
-    numCPUs = 2
-    vmsPerHost = 1
     addHosts = 'vsan-complex-vcqafvt'
   else
     numEsx = 4
-    numCPUs = 2
-    vmsPerHost = 0
     addHosts = 'vsan-simple-vcqafvt'
   end
   testbed = {
     'name' => nameParts.join('-'),
-    'esx' => (0...numEsx).map do |i|
+    'esx' => (0...numEsx).map do |i| 
       {
         'name' => "esx.#{i}",
         'style' => esxStyle,
-        'disks' => [ 30 * oneGB, 30 * oneGB, 30 * oneGB],
-        'freeLocalLuns' => 1,
-        'freeSharedLuns' => 2,
-        'numMem' => 13 * 1024,
-        'numCPUs' => numCPUs,
-        'ssds' => [ 5*oneGB ],
+        'disks' => [ 45 * oneGB, 45 * oneGB, 45 * oneGB],          
+        'sasDisks' => [ 45 *oneGB ],
+        'freeLocalLuns' => 2,
+        'freeSharedLuns' => 1,
+        'numMem' => 6 * 1024, # 6 GB (to see if that helps)
+        'ssds' => [ 50*oneGB ],
         'nics' => 2,
         'staf' => false,
         'desiredPassword' => 'e2eFunctionalTest',
@@ -62,11 +49,11 @@ $testbed = Proc.new do |type, esxStyle, vcStyle, dbType, location|
     },
     'vsan' => true,
     'postBoot' => Proc.new do |runId, testbedSpec, vc, esxList, iscsiList|
-      ovf = NimbusUtils.get_absolute_ovf("CentOS/VM_OVF10.ovf")
+      ovf = 'http://vimcattw.eng.vmware.com/vms/CentOS/VM_OVF10.ovf'
       if location && $nimbusEnv && $nimbusEnv['NIMBUS'] =~ /gamma/
         ovf = 'http://10.116.111.50/testwareTestCentOS/VM_OVF10.ovf'
       end
-
+      vmsPerHost = 2
       cloudVc = vc
       vim = VIM.connect cloudVc.rbvmomiConnectSpec
       datacenters = vim.serviceInstance.content.rootFolder.childEntity.grep(RbVmomi::VIM::Datacenter)
@@ -122,7 +109,7 @@ $testbed = Proc.new do |type, esxStyle, vcStyle, dbType, location|
 
       VcQaTestbedCommon.postBoot(
         vmsPerHost,
-        NimbusUtils.get_absolute_ovf("CentOS/VM_OVF10.ovf"),
+        'http://vimcattw.eng.vmware.com/vms/CentOS/VM_OVF10.ovf', 
         runId, testbedSpec, vc, esxList, iscsiList)
     end,
     'nfs' => [
@@ -131,7 +118,7 @@ $testbed = Proc.new do |type, esxStyle, vcStyle, dbType, location|
       },
     ],
   }
-
+  
   if dbType == 'mssql'
     testbed['genericVM'] ||= []
     testbed['genericVM'] << {
@@ -141,15 +128,15 @@ $testbed = Proc.new do |type, esxStyle, vcStyle, dbType, location|
     testbed['vc']['dbHost'] = 'vc-mssql'
   end
 
-  testbed = VcQaTestbedCommon.addSharedDisks testbed, [20, 10, 20, 10], sharedStorageStyle   # 2 x 20gb shared vmfs, 2 x 10gb free luns as defined by 'freeSharedLuns', DON'T CHANGE THE ORDERING UNLESS YOU KNOW WHAT YOU'RE DOING!
-
+  testbed = VcQaTestbedCommon.addSharedDisks testbed, [20, 20, 20], sharedStorageStyle
+  
   testbed
 end
 
 [:pxeBoot, :fullInstall].each do |esxStyle|
   [:vpxInstall, :vcva].each do |vcStyle|
     [:embedded, :mssql, :oracle].each do |dbType|
-      ['complex', 'simple', 'complexCPU', 'simpleCPU'].each do |type|
+      ['complex', 'simple'].each do |type|
         testbedSpec = $testbed.call(type, esxStyle, vcStyle, dbType)
         Nimbus::TestbedRegistry.registerTestbed testbedSpec
       end
